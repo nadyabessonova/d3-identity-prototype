@@ -1,0 +1,32 @@
+{
+  "identity_document": {
+    "type": "identity",
+    "sid": "372294e24d6f05af4718115187ab7ea0a3272a43e99097c534cbee612b3ce220",
+    "public_key": "BASE64_ED25519_PUBLIC_KEY",
+    "encryption_public_key": "BASE64_X25519_PUBLIC_KEY",
+    "version": 1
+  },
+  "service_metadata_document": {
+    "type": "metadata",
+    "sid": "372294e24d6f05af4718115187ab7ea0a3272a43e99097c534cbee612b3ce220",
+    "metadata": {
+      "provider": "0382631d2ce895fd477906fbff1c1c7a17701a847579f9fe075756d33ed986d1",
+      "role": "service",
+      "action": "detect",
+      "in": "scan_request",
+      "out": "report",
+      "endpoint": "local://detect"
+    },
+    "version": 1
+  },
+  "provider_registry_document": {
+    "type": "metadata",
+    "sid": "0382631d2ce895fd477906fbff1c1c7a17701a847579f9fe075756d33ed986d1",
+    "metadata": {
+      "services": [
+        "372294e24d6f05af4718115187ab7ea0a3272a43e99097c534cbee612b3ce220"
+      ]
+    },
+    "version": 1
+  }
+}

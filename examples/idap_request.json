@@ -1,0 +1,17 @@
+{
+  "enc_cap": {
+    "alg": "X25519-A256GCM-PoC",
+    "recipient": "372294e24d6f05af4718115187ab7ea0a3272a43e99097c534cbee612b3ce220",
+    "ephemeral_public": "BASE64_DAP_EPHEMERAL_X25519_PUBLIC_KEY",
+    "nonce": "BASE64_AES_GCM_NONCE",
+    "ciphertext": "BASE64_AES_GCM_ENCRYPTED_CAPABILITY"
+  },
+  "target_sid": "372294e24d6f05af4718115187ab7ea0a3272a43e99097c534cbee612b3ce220",
+  "requested_action": "detect",
+  "request_nonce": "9a6a5b56af4e56f5",
+  "payload": {
+    "sample": "file-123"
+  },
+  "client_ephemeral": "HEX_CLIENT_EPHEMERAL_X25519_PUBLIC_KEY",
+  "client_signature": "BASE64_CLIENT_AGENT_SIGNATURE_OVER_CANONICAL_REQUEST_WITHOUT_THIS_FIELD"
+}

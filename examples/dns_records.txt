@@ -1,0 +1,27 @@
+# Examples of records produced by the mutable store backends.
+# Long SID values are split into DNS labels by the real Knot/DNSLink stores.
+
+# KNOT_DNS identity TXT record
+372294e24d6f05af4718115187ab7ea0.a3272a43e99097c534cbee612b3ce220.identity.example.com. 60 IN TXT "type=identity;sid=372294e24d6f05af4718115187ab7ea0a3272a43e99097c534cbee612b3ce220;alg=ed25519;key=BASE64_ED25519_PUBLIC_KEY;ver=1;"
+
+# KNOT_DNS service-agent metadata TXT record
+372294e24d6f05af4718115187ab7ea0.a3272a43e99097c534cbee612b3ce220.metadata.example.com. 60 IN TXT "type=agent;sid=372294e24d6f05af4718115187ab7ea0a3272a43e99097c534cbee612b3ce220;provider=0382631d2ce895fd477906fbff1c1c7a17701a847579f9fe075756d33ed986d1;role=service;action=detect;in=scan_request;out=report;endpoint=local://detect;ver=1;"
+
+# KNOT_DNS provider registry TXT record
+0382631d2ce895fd477906fbff1c1c7a.17701a847579f9fe075756d33ed986d1.metadata.example.com. 60 IN TXT "type=registry;sid=0382631d2ce895fd477906fbff1c1c7a17701a847579f9fe075756d33ed986d1;services=372294e24d6f05af4718115187ab7ea0a3272a43e99097c534cbee612b3ce220;ver=1;"
+
+# DNSLINK_IPFS identity pointer record
+_dnslink.372294e24d6f05af4718115187ab7ea0.a3272a43e99097c534cbee612b3ce220.identity.example.com. 60 IN TXT "dnslink=/ipfs/QmExampleIdentityCID"
+
+# DNSLINK_IPFS metadata pointer record
+_dnslink.372294e24d6f05af4718115187ab7ea0.a3272a43e99097c534cbee612b3ce220.metadata.example.com. 60 IN TXT "dnslink=/ipfs/QmExampleMetadataCID"
+
+# IPFS/IPNS backend does not use DNS records. It stores JSON in IPFS and uses an IPNS name from ipfs_store_registry.json as the mutable pointer.
+# Example registry mapping:
+# {
+#   "372294...ce220:metadata": {
+#     "key_name": "d3-372294...ce220:metadata",
+#     "ipns_name": "k51qzi5uqu5...",
+#     "cid": "QmExampleMetadataCID"
+#   }
+# }
