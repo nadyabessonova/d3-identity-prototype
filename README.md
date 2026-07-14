@@ -1,6 +1,4 @@
-# D3 identity prototype
-
-Repository accompanies the MSc thesis "Identity Management for AI Agents based on DNS" and implements the proof-of-concept realisation of the D3 framework.
+# Titan prototype
 
 Repository contains a minimal Python proof of concept for the agent identity, delegation, authorization, and secure communication flow as described in the paper "Titan: Towards Trustful and Resilient Internet. Deliverable D3: An Identity and Delegation Framework for Secure AI Agent
 Communications".
@@ -82,6 +80,9 @@ Provides X25519 ephemeral session helpers and AES-GCM message encryption/decrypt
 
 `demo.py`
 Runs one full flow through the abstract store layer.
+
+`dnssec_attack_demo.py`
+Runs a focused DNS-layer security experiment. It publishes an identity, confirms normal DNSSEC-validated TXT resolution succeeds, then simulates a forged TXT response by modifying the returned RRset while keeping the original RRSIG. The resolver rejects the response before any public key is returned to IDAP.
 
 ## Capability spec
 
@@ -209,6 +210,27 @@ dnslink=/ipfs/<cid>
 The mutable layer is DNS/Knot, while immutable JSON content is stored in IPFS.
 The DNSLink TXT lookup is DNSSEC-validated before the IPFS CID is dereferenced.
 
+## DNSSEC Attack Experiment
+
+To demonstrate that DNSSEC validation is active rather than only present in the successful path:
+
+```bash
+python3 dnssec_attack_demo.py
+```
+
+Expected result:
+
+```text
+Normal DNSSEC resolution:
+AUTHENTICATED
+
+Forged TXT response:
+REJECTED
+IDAP reached: False
+```
+
+The attack script simulates a forged DNS TXT answer by changing the TXT payload after it has been received from Knot DNS while leaving the original DNSSEC signature unchanged. Validation fails in `dnssec_resolver.py`, before `idap.py` can receive or trust a public key.
+
 ## Expected Output
 
 The exact SIDs, nonces, ciphertexts, signatures, and session keys change on every run. The important expected statuses are:
@@ -241,8 +263,6 @@ The CSV contains:
 run_id,timestamp,backend,scenario,operation,duration_ms,status
 ```
 
-Published experiment CSV artifacts are stored under `data/` in the GitHub repository.
-
 To generate summary statistics:
 
 ```bash
@@ -257,14 +277,18 @@ To generate performance diagrams for all real backends:
 python3 plot_performance.py
 ```
 
-This writes PNG files to `performance_plots/` by default. In the GitHub repository, archived plot outputs are kept under `plots/`.
+This writes PNG files to:
+
+```text
+performance_plots/
+```
 
 To generate readable comparison diagrams only for `KNOT_DNS` and `DNSLINK_IPFS`, excluding the much slower pure IPNS/IPFS results:
 
 ```bash
 python3 plot_performance.py \
   --backends KNOT_DNS,DNSLINK_IPFS \
-  --output-dir plots/performance_plots_dnslink_comparison
+  --output-dir performance_plots_dnslink_comparison
 ```
 
 ## Dependencies
