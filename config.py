@@ -19,13 +19,24 @@ IPFS_ALLOW_OFFLINE = os.environ.get("IPFS_ALLOW_OFFLINE", "false").lower() in (
     "true",
     "yes",
 )
-KNOT_DNS_SERVER = os.environ.get("KNOT_DNS_SERVER", "192.168.1.118")
+KNOT_DNS_SERVER = os.environ.get("KNOT_DNS_SERVER", "192.168.1.121")
 KNOT_DNS_ZONE = os.environ.get("KNOT_DNS_ZONE", "example.com.")
 KNOT_DNS_TSIG_KEY = os.environ.get("KNOT_DNS_TSIG_KEY", "prototype-update")
 KNOT_DNS_TSIG_SECRET = os.environ.get(
     "KNOT_DNS_TSIG_SECRET",
     "hHbcm2AxO/U1FJHVHsldWsOjFUiww747mQ52pIbmgoY=",
 )
+DNSSEC_VALIDATE = os.environ.get("DNSSEC_VALIDATE", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+DNSSEC_TRUST_ANCHOR = os.environ.get(
+    "DNSSEC_TRUST_ANCHOR",
+    "trust-anchors/example.com.key",
+)
+DNSSEC_ROOT = os.environ.get("DNSSEC_ROOT", KNOT_DNS_ZONE)
+DNS_TIMEOUT = int(os.environ.get("DNS_TIMEOUT", "2"))
 _STORE = None
 
 
@@ -49,6 +60,10 @@ def get_store():
                 zone=KNOT_DNS_ZONE,
                 tsig_key_name=KNOT_DNS_TSIG_KEY,
                 tsig_secret=KNOT_DNS_TSIG_SECRET,
+                dnssec_validate=DNSSEC_VALIDATE,
+                dnssec_trust_anchor=DNSSEC_TRUST_ANCHOR,
+                dnssec_root=DNSSEC_ROOT,
+                dns_timeout=DNS_TIMEOUT,
             )
         elif STORE_TYPE == "DNSLINK_IPFS":
             _STORE = DNSLinkIPFSStore(
@@ -58,6 +73,10 @@ def get_store():
                 tsig_secret=KNOT_DNS_TSIG_SECRET,
                 api_url=IPFS_API_URL,
                 timeout=IPFS_TIMEOUT,
+                dnssec_validate=DNSSEC_VALIDATE,
+                dnssec_trust_anchor=DNSSEC_TRUST_ANCHOR,
+                dnssec_root=DNSSEC_ROOT,
+                dns_timeout=DNS_TIMEOUT,
             )
         else:
             raise ValueError(f"Unknown STORE_TYPE: {STORE_TYPE}")

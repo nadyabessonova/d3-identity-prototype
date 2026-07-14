@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.Rhistory
+.cache/
+.matplotlib-cache/
+ipfs_store_registry.json
+performance_results_dnssec.csv

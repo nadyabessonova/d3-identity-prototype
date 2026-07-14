@@ -281,6 +281,7 @@ def plot_protocol_phase_breakdown(df, backend_order, output_dir):
 def plot_backend_operation_log_scale(df, output_dir):
     operations = [
         ("KNOT_DNS", "knot_dns", "dns_txt_update", "Knot DNS: TXT update"),
+        ("KNOT_DNS", "knot_dns", "dnssec_txt_resolve", "Knot DNS: DNSSEC TXT resolve"),
         ("KNOT_DNS", "knot_dns", "dns_txt_resolve", "Knot DNS: TXT resolve"),
         ("IPFS", "ipfs", "ipfs_add_json", "IPFS: add JSON"),
         ("IPFS", "ipfs", "ipns_publish", "IPFS: IPNS publish"),
@@ -288,6 +289,7 @@ def plot_backend_operation_log_scale(df, output_dir):
         ("IPFS", "ipfs", "ipfs_cat_json", "IPFS: cat JSON"),
         ("DNSLINK_IPFS", "dnslink_ipfs", "ipfs_add_json", "DNSLink/IPFS: add JSON"),
         ("DNSLINK_IPFS", "dnslink_ipfs", "dns_txt_update", "DNSLink/IPFS: TXT update"),
+        ("DNSLINK_IPFS", "dnslink_ipfs", "dnssec_txt_resolve", "DNSLink/IPFS: DNSSEC TXT resolve"),
         ("DNSLINK_IPFS", "dnslink_ipfs", "dns_txt_resolve", "DNSLink/IPFS: TXT resolve"),
         ("DNSLINK_IPFS", "dnslink_ipfs", "ipfs_cat_json", "DNSLink/IPFS: cat JSON"),
     ]

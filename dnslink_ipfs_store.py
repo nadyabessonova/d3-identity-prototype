@@ -12,6 +12,7 @@ import uuid
 from urllib import error, parse, request
 
 import identity
+import dnssec_resolver
 import metrics
 from store_interface import TrustfulStore
 
@@ -38,6 +39,10 @@ class DNSLinkIPFSStore(TrustfulStore):
         api_url="http://127.0.0.1:5001",
         ttl=60,
         timeout=300,
+        dnssec_validate=True,
+        dnssec_trust_anchor="trust-anchors/example.com.key",
+        dnssec_root=None,
+        dns_timeout=2,
     ):
         self.server = server
         self.zone = _fqdn(zone)
@@ -46,6 +51,10 @@ class DNSLinkIPFSStore(TrustfulStore):
         self.api_url = api_url.rstrip("/")
         self.ttl = ttl
         self.timeout = timeout
+        self.dnssec_validate = dnssec_validate
+        self.dnssec_trust_anchor = dnssec_trust_anchor
+        self.dnssec_root = _fqdn(dnssec_root or zone)
+        self.dns_timeout = dns_timeout
         self.published_identities = set()
 
     def _labels(self, identifier):
@@ -150,6 +159,20 @@ class DNSLinkIPFSStore(TrustfulStore):
         return result
 
     def _run_dig_txt(self, name):
+        if self.dnssec_validate:
+            return metrics.timed(
+                "DNSSEC DNSLink resolve",
+                "dnslink_ipfs",
+                "dnssec_txt_resolve",
+                lambda: dnssec_resolver.resolve_txt(
+                    self.server,
+                    name,
+                    self.dnssec_trust_anchor,
+                    self.dnssec_root,
+                    timeout=self.dns_timeout,
+                ),
+            )
+
         result = metrics.timed(
             "DNSLink TXT resolve",
             "dnslink_ipfs",

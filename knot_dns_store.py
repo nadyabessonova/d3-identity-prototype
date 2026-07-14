@@ -4,6 +4,7 @@ import shlex
 import subprocess
 
 import identity
+import dnssec_resolver
 import metrics
 from store_interface import TrustfulStore
 
@@ -38,12 +39,20 @@ class KnotDNSStore(TrustfulStore):
         tsig_key_name,
         tsig_secret,
         ttl=60,
+        dnssec_validate=True,
+        dnssec_trust_anchor="trust-anchors/example.com.key",
+        dnssec_root=None,
+        dns_timeout=2,
     ):
         self.server = server
         self.zone = _fqdn(zone)
         self.tsig_key_name = tsig_key_name.rstrip(".")
         self.tsig_secret = tsig_secret
         self.ttl = ttl
+        self.dnssec_validate = dnssec_validate
+        self.dnssec_trust_anchor = dnssec_trust_anchor
+        self.dnssec_root = _fqdn(dnssec_root or zone)
+        self.dns_timeout = dns_timeout
 
     def _sid_labels(self, identifier):
         # SHA-256 SID values are 64 chars, exceeding DNS's 63-octet label limit.
@@ -56,6 +65,20 @@ class KnotDNSStore(TrustfulStore):
         return _fqdn(f"{self._sid_labels(identifier)}.{namespace}.{self.zone}")
 
     def _run_dig_txt(self, name):
+        if self.dnssec_validate:
+            return metrics.timed(
+                "DNSSEC TXT resolve",
+                "knot_dns",
+                "dnssec_txt_resolve",
+                lambda: dnssec_resolver.resolve_txt(
+                    self.server,
+                    name,
+                    self.dnssec_trust_anchor,
+                    self.dnssec_root,
+                    timeout=self.dns_timeout,
+                ),
+            )
+
         result = metrics.timed(
             "DNS TXT resolve",
             "knot_dns",
