@@ -9,7 +9,10 @@ DNSSEC validation must fail before any public key can be returned to IDAP.
 import os
 import time
 
-os.environ.setdefault("PERFORMANCE_RESULTS", "security_experiment_results.csv")
+os.environ.setdefault(
+    "PERFORMANCE_RESULTS",
+    "artifacts/security/security_experiment_results.csv",
+)
 
 import dns.message
 import dns.name

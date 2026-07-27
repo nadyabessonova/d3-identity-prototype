@@ -68,6 +68,13 @@ def publish_registry(store, provider, service_sids):
         )
 
 
+def service_metadata(provider, **metadata):
+    metadata["provider"] = provider["sid"]
+    if config.STORE_TYPE == "IPFS":
+        metadata["_provider_private_key"] = provider["private_key"]
+    return metadata
+
+
 def sign_request(request, signer_sid):
     unsigned = {k: v for k, v in request.items() if k != "client_signature"}
     request["client_signature"] = identity.sign(
@@ -147,14 +154,16 @@ def main():
         lambda: publish_identity(
             store,
             s1,
-            {
-                "provider": sp["sid"],
-                "role": "service",
-                "action": "detect",
-                "in": "scan_request",
-                "out": "report",
-                "endpoint": "local://detect",
-            },
+            service_metadata(
+                sp,
+                role="service",
+                action="detect",
+                **{
+                    "in": "scan_request",
+                    "out": "report",
+                    "endpoint": "local://detect",
+                },
+            ),
         ),
     )
 

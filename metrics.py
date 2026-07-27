@@ -8,7 +8,10 @@ from time import perf_counter
 
 
 RUN_ID = str(uuid.uuid4())
-RESULTS_FILE = os.environ.get("PERFORMANCE_RESULTS", "performance_results.csv")
+RESULTS_FILE = os.environ.get(
+    "PERFORMANCE_RESULTS",
+    "artifacts/performance/raw/performance_results.csv",
+)
 CSV_COLUMNS = [
     "run_id",
     "timestamp",
@@ -25,6 +28,10 @@ def _timestamp():
 
 
 def backend_name():
+    explicit_label = os.environ.get("METRICS_BACKEND_LABEL")
+    if explicit_label:
+        return explicit_label
+
     store_type = os.environ.get("STORE_TYPE", "DNS_EMULATED")
     if store_type == "DNS":
         return "DNS_EMULATED"
@@ -32,6 +39,9 @@ def backend_name():
 
 
 def log_metric(scenario, operation, duration_seconds, status="SUCCESS"):
+    directory = os.path.dirname(RESULTS_FILE)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
     file_exists = os.path.exists(RESULTS_FILE)
     write_header = not file_exists or os.path.getsize(RESULTS_FILE) == 0
     with open(RESULTS_FILE, "a", newline="") as csv_file:

@@ -1,0 +1,502 @@
+From aabbce612542bbe9f7b2146201f822fd3af93086 Mon Sep 17 00:00:00 2001
+From: Nadya Bessonova <n.bessonova@artape.tech>
+Date: Tue, 14 Jul 2026 14:34:06 +0300
+Subject: [PATCH] Add DNSSEC validation for DNS-backed stores
+
+---
+ .gitignore                    |   8 ++
+ README.md                     |  45 +++++++----
+ config.py                     |  21 ++++-
+ dnslink_ipfs_store.py         |  23 ++++++
+ dnssec_resolver.py            | 139 ++++++++++++++++++++++++++++++++++
+ knot_dns_store.py             |  23 ++++++
+ plot_performance.py           |   2 +
+ trust-anchors/example.com.key |   3 +
+ 8 files changed, 247 insertions(+), 17 deletions(-)
+ create mode 100644 .gitignore
+ create mode 100644 dnssec_resolver.py
+ create mode 100644 trust-anchors/example.com.key
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..9cc682a
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,8 @@
++__pycache__/
++*.py[cod]
++.DS_Store
++.Rhistory
++.cache/
++.matplotlib-cache/
++ipfs_store_registry.json
++performance_results_dnssec.csv
+diff --git a/README.md b/README.md
+index 39a3eab..5d9ee48 100644
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,5 @@
+-# d3-identity-prototype
++# D3 identity prototype
++
+ Repository accompanies the MSc thesis "Identity Management for AI Agents based on DNS" and implements the proof-of-concept realisation of the D3 framework.
+ 
+ Repository contains a minimal Python proof of concept for the agent identity, delegation, authorization, and secure communication flow as described in the paper "Titan: Towards Trustful and Resilient Internet. Deliverable D3: An Identity and Delegation Framework for Secure AI Agent
+@@ -20,9 +21,9 @@ The same D3 protocol flow can run against four Trustful Mutable Store backends:
+ | `STORE_TYPE` | Mutable layer | Content layer | Purpose |
+ |---|---|---|---|
+ | `DNS_EMULATED` | In-memory DNS-like records | In-memory records | Baseline with no external services |
+-| `KNOT_DNS` | Real Knot DNS TXT records | DNS TXT records | Real DNS/DNSSEC-style mutable store |
++| `KNOT_DNS` | Real Knot DNS TXT records | DNS TXT records | Real DNS/DNSSEC-validated mutable store |
+ | `IPFS` | IPNS | IPFS immutable JSON objects | DNS-independent IPFS/IPNS mutable store experiment |
+-| `DNSLINK_IPFS` | Knot DNS DNSLink TXT records | IPFS immutable JSON objects | Hybrid design that avoids IPNS publication latency |
++| `DNSLINK_IPFS` | Knot DNS DNSLink TXT records | IPFS immutable JSON objects | Hybrid design with DNSSEC-validated DNSLink pointers that avoids IPNS publication latency |
+ 
+ The D3 protocol components are the same across all modes. Only the store backend selected by `config.py` changes.
+ 
+@@ -56,13 +57,16 @@ Selects and initializes the active Trustful Store implementation. The demo uses
+ In-memory DNS-like implementation of the Trustful Mutable Store. This is the default store used by the demo and is reported in performance results as `DNS_EMULATED`.
+ 
+ `knot_dns_store.py`
+-Real Knot DNS-backed implementation of the Trustful Mutable Store. It publishes and resolves TXT records in a Knot-served DNS zone using TSIG-authenticated dynamic DNS updates.
++Real Knot DNS-backed implementation of the Trustful Mutable Store. It publishes TXT records in a Knot-served DNS zone using TSIG-authenticated dynamic DNS updates and resolves TXT records through DNSSEC validation.
++
++`dnssec_resolver.py`
++Shared DNSSEC-validating TXT resolver for the real DNS-backed stores. It validates the zone DNSKEY RRset against the configured trust anchor, then validates TXT RRsets before returning them to the protocol code.
+ 
+ `ipfs_store.py`
+ Real IPFS/IPNS-backed implementation of the Trustful Mutable Store. It stores immutable identity and metadata JSON objects in IPFS and uses IPNS as the mutable pointer layer. Because D3 SIDs and IPNS names are separate namespaces, the prototype keeps a local `ipfs_store_registry.json` mapping from SID store keys to IPNS names. In `STORE_TYPE=IPFS`, the current identity layer uses its existing IPFS-compatible SID derivation. 
+ 
+ `dnslink_ipfs_store.py`
+-DNSLink/IPFS implementation of the Trustful Mutable Store. It stores immutable identity and metadata JSON objects in IPFS, then publishes DNSLink TXT records in Knot DNS that point to those IPFS CIDs. This avoids IPNS publication but still using IPFS for immutable content storage.
++DNSLink/IPFS implementation of the Trustful Mutable Store. It stores immutable identity and metadata JSON objects in IPFS, then publishes DNSLink TXT records in Knot DNS that point to those IPFS CIDs. DNSLink reads are DNSSEC-validated. This avoids IPNS publication but still uses IPFS for immutable content storage.
+ 
+ `broker.py`
+ Looks up provider metadata in the store and returns service agent SIDs matching an action, input type, and output type.
+@@ -134,13 +138,23 @@ Run this from a normal macOS terminal so `nsupdate` can reach the VM network int
+ Default Knot DNS settings are in `config.py`:
+ 
+ ```text
+-KNOT_DNS_SERVER=192.168.1.118
++KNOT_DNS_SERVER=192.168.1.121
+ KNOT_DNS_ZONE=example.com.
+ KNOT_DNS_TSIG_KEY=prototype-update
++DNSSEC_VALIDATE=true
++DNSSEC_TRUST_ANCHOR=trust-anchors/example.com.key
++DNSSEC_ROOT=example.com.
++DNS_TIMEOUT=2
+ ```
+ 
+ These can be overridden with environment variables, including `KNOT_DNS_TSIG_SECRET`.
+ 
++For the real DNS modes, TSIG is used only to authenticate dynamic DNS writes. Runtime DNS reads are validated with DNSSEC before the returned TXT values are accepted by the prototype. For temporary debugging only, DNSSEC read validation can be disabled with:
++
++```bash
++DNSSEC_VALIDATE=false STORE_TYPE=KNOT_DNS python3 demo.py
++```
++
+ To run the same flow against a local IPFS/Kubo daemon:
+ 
+ ```bash
+@@ -193,6 +207,7 @@ dnslink=/ipfs/<cid>
+ ```
+ 
+ The mutable layer is DNS/Knot, while immutable JSON content is stored in IPFS.
++The DNSLink TXT lookup is DNSSEC-validated before the IPFS CID is dereferenced.
+ 
+ ## Expected Output
+ 
+@@ -226,6 +241,8 @@ The CSV contains:
+ run_id,timestamp,backend,scenario,operation,duration_ms,status
+ ```
+ 
++Published experiment CSV artifacts are stored under `data/` in the GitHub repository.
++
+ To generate summary statistics:
+ 
+ ```bash
+@@ -240,28 +257,24 @@ To generate performance diagrams for all real backends:
+ python3 plot_performance.py
+ ```
+ 
+-This writes PNG files to:
+-
+-```text
+-performance_plots/
+-```
++This writes PNG files to `performance_plots/` by default. In the GitHub repository, archived plot outputs are kept under `plots/`.
+ 
+ To generate readable comparison diagrams only for `KNOT_DNS` and `DNSLINK_IPFS`, excluding the much slower pure IPNS/IPFS results:
+ 
+ ```bash
+ python3 plot_performance.py \
+   --backends KNOT_DNS,DNSLINK_IPFS \
+-  --output-dir performance_plots_dnslink_comparison
++  --output-dir plots/performance_plots_dnslink_comparison
+ ```
+ 
+ ## Dependencies
+ 
+-The prototype requires Python 3 and the `cryptography` package.
++The prototype requires Python 3, `cryptography`, and `dnspython`.
+ 
+-If `cryptography` is not installed:
++If dependencies are not installed:
+ 
+ ```bash
+-python3 -m pip install cryptography
++python3 -m pip install cryptography dnspython
+ ```
+ 
+ ## Current Scope And Limitations
+@@ -270,6 +283,7 @@ python3 -m pip install cryptography
+ - `STORE_TYPE=KNOT_DNS` uses a real Knot DNS server as the Trustful Mutable Store.
+ - `STORE_TYPE=IPFS` uses real IPFS immutable storage plus IPNS mutable pointers as the Trustful Mutable Store.
+ - `STORE_TYPE=DNSLINK_IPFS` uses Knot DNS as the mutable DNSLink pointer layer and IPFS as immutable JSON storage.
++- `STORE_TYPE=KNOT_DNS` and `STORE_TYPE=DNSLINK_IPFS` use TSIG for authenticated DNS writes and DNSSEC validation for authenticated DNS reads.
+ - The IPFS backend uses `ipfs_store_registry.json` as a PoC bootstrap registry because D3/IPFS SIDs and IPNS names are different namespaces.
+ - The IPFS backend keeps the D3 protocol flow, but the SID-to-IPNS registry is a prototype bootstrap, not a fully decentralized discovery mechanism.
+ - Replay and quota state are held in process memory in `idap.py`.
+@@ -281,4 +295,3 @@ python3 -m pip install cryptography
+ - Add signed metadata endorsements for the IPFS/IPNS trust-binding model described in the paper. The current IPFS backend demonstrates self-certifying identifiers and IPNS-based metadata resolution, but it does not yet add provider or broker signatures directly to the metadata object.
+ - A minimal extension would store metadata objects containing owner and provider endorsements, for example `owner_signature` and `provider_signature`, so a relying party can verify not only that the IID controls a public key, but also that a trusted Agent Provider or Broker endorses the agent metadata.
+ - This is different from DNSSEC-based trust binding. DNSSEC binds an IID/public key to an organization-controlled domain, while signed metadata endorsements preserve the DNS-independent IPFS/IPNS model and express trust through cryptographic attestations attached to IPFS metadata.
+-
+diff --git a/config.py b/config.py
+index 4a6b4d0..7144e14 100644
+--- a/config.py
++++ b/config.py
+@@ -19,13 +19,24 @@ IPFS_ALLOW_OFFLINE = os.environ.get("IPFS_ALLOW_OFFLINE", "false").lower() in (
+     "true",
+     "yes",
+ )
+-KNOT_DNS_SERVER = os.environ.get("KNOT_DNS_SERVER", "192.168.1.118")
++KNOT_DNS_SERVER = os.environ.get("KNOT_DNS_SERVER", "192.168.1.121")
+ KNOT_DNS_ZONE = os.environ.get("KNOT_DNS_ZONE", "example.com.")
+ KNOT_DNS_TSIG_KEY = os.environ.get("KNOT_DNS_TSIG_KEY", "prototype-update")
+ KNOT_DNS_TSIG_SECRET = os.environ.get(
+     "KNOT_DNS_TSIG_SECRET",
+     "hHbcm2AxO/U1FJHVHsldWsOjFUiww747mQ52pIbmgoY=",
+ )
++DNSSEC_VALIDATE = os.environ.get("DNSSEC_VALIDATE", "true").lower() in (
++    "1",
++    "true",
++    "yes",
++)
++DNSSEC_TRUST_ANCHOR = os.environ.get(
++    "DNSSEC_TRUST_ANCHOR",
++    "trust-anchors/example.com.key",
++)
++DNSSEC_ROOT = os.environ.get("DNSSEC_ROOT", KNOT_DNS_ZONE)
++DNS_TIMEOUT = int(os.environ.get("DNS_TIMEOUT", "2"))
+ _STORE = None
+ 
+ 
+@@ -49,6 +60,10 @@ def get_store():
+                 zone=KNOT_DNS_ZONE,
+                 tsig_key_name=KNOT_DNS_TSIG_KEY,
+                 tsig_secret=KNOT_DNS_TSIG_SECRET,
++                dnssec_validate=DNSSEC_VALIDATE,
++                dnssec_trust_anchor=DNSSEC_TRUST_ANCHOR,
++                dnssec_root=DNSSEC_ROOT,
++                dns_timeout=DNS_TIMEOUT,
+             )
+         elif STORE_TYPE == "DNSLINK_IPFS":
+             _STORE = DNSLinkIPFSStore(
+@@ -58,6 +73,10 @@ def get_store():
+                 tsig_secret=KNOT_DNS_TSIG_SECRET,
+                 api_url=IPFS_API_URL,
+                 timeout=IPFS_TIMEOUT,
++                dnssec_validate=DNSSEC_VALIDATE,
++                dnssec_trust_anchor=DNSSEC_TRUST_ANCHOR,
++                dnssec_root=DNSSEC_ROOT,
++                dns_timeout=DNS_TIMEOUT,
+             )
+         else:
+             raise ValueError(f"Unknown STORE_TYPE: {STORE_TYPE}")
+diff --git a/dnslink_ipfs_store.py b/dnslink_ipfs_store.py
+index 517f457..10b48cd 100644
+--- a/dnslink_ipfs_store.py
++++ b/dnslink_ipfs_store.py
+@@ -12,6 +12,7 @@ import uuid
+ from urllib import error, parse, request
+ 
+ import identity
++import dnssec_resolver
+ import metrics
+ from store_interface import TrustfulStore
+ 
+@@ -38,6 +39,10 @@ class DNSLinkIPFSStore(TrustfulStore):
+         api_url="http://127.0.0.1:5001",
+         ttl=60,
+         timeout=300,
++        dnssec_validate=True,
++        dnssec_trust_anchor="trust-anchors/example.com.key",
++        dnssec_root=None,
++        dns_timeout=2,
+     ):
+         self.server = server
+         self.zone = _fqdn(zone)
+@@ -46,6 +51,10 @@ class DNSLinkIPFSStore(TrustfulStore):
+         self.api_url = api_url.rstrip("/")
+         self.ttl = ttl
+         self.timeout = timeout
++        self.dnssec_validate = dnssec_validate
++        self.dnssec_trust_anchor = dnssec_trust_anchor
++        self.dnssec_root = _fqdn(dnssec_root or zone)
++        self.dns_timeout = dns_timeout
+         self.published_identities = set()
+ 
+     def _labels(self, identifier):
+@@ -150,6 +159,20 @@ class DNSLinkIPFSStore(TrustfulStore):
+         return result
+ 
+     def _run_dig_txt(self, name):
++        if self.dnssec_validate:
++            return metrics.timed(
++                "DNSSEC DNSLink resolve",
++                "dnslink_ipfs",
++                "dnssec_txt_resolve",
++                lambda: dnssec_resolver.resolve_txt(
++                    self.server,
++                    name,
++                    self.dnssec_trust_anchor,
++                    self.dnssec_root,
++                    timeout=self.dns_timeout,
++                ),
++            )
++
+         result = metrics.timed(
+             "DNSLink TXT resolve",
+             "dnslink_ipfs",
+diff --git a/dnssec_resolver.py b/dnssec_resolver.py
+new file mode 100644
+index 0000000..2786c68
+--- /dev/null
++++ b/dnssec_resolver.py
+@@ -0,0 +1,139 @@
++"""DNSSEC-validating TXT resolver for the real DNS-backed stores."""
++
++import re
++
++import dns.dnssec
++import dns.exception
++import dns.flags
++import dns.message
++import dns.name
++import dns.query
++import dns.rdatatype
++import dns.rcode
++import dns.rdataclass
++import dns.rdataset
++
++
++class DNSSECValidationError(RuntimeError):
++    """Raised when a DNS answer cannot be validated with the configured anchor."""
++
++
++def _fqdn(name):
++    return name if name.endswith(".") else f"{name}."
++
++
++def _query(server, name, rdtype, timeout):
++    query = dns.message.make_query(name, rdtype, want_dnssec=True)
++    try:
++        response = dns.query.udp(query, server, timeout=timeout)
++        if response.flags & dns.flags.TC:
++            response = dns.query.tcp(query, server, timeout=timeout)
++    except dns.exception.Timeout as exc:
++        raise DNSSECValidationError(f"DNS query timed out for {name} {rdtype}") from exc
++
++    rcode = response.rcode()
++    if rcode != dns.rcode.NOERROR:
++        raise DNSSECValidationError(
++            f"DNS query failed for {name} {rdtype}: {dns.rcode.to_text(rcode)}"
++        )
++    return response
++
++
++def _find_rrset(section, name, rdtype, covers=dns.rdatatype.NONE):
++    target_name = dns.name.from_text(_fqdn(name))
++    for rrset in section:
++        if rrset.name != target_name:
++            continue
++        if rrset.rdtype != rdtype:
++            continue
++        if rdtype == dns.rdatatype.RRSIG and rrset.covers != covers:
++            continue
++        return rrset
++    return None
++
++
++def _parse_trust_anchor(path, root):
++    """Parse a BIND trusted-keys style file containing one DNSKEY anchor."""
++    root_name = dns.name.from_text(_fqdn(root))
++    with open(path, "r", encoding="utf-8") as anchor_file:
++        text = anchor_file.read()
++
++    pattern = re.compile(
++        r"(?P<name>[A-Za-z0-9_.-]+)\s+"
++        r"(?P<flags>\d+)\s+"
++        r"(?P<protocol>\d+)\s+"
++        r"(?P<algorithm>\d+)\s+"
++        r'"(?P<key>[^"]+)"'
++    )
++    for match in pattern.finditer(text):
++        name = dns.name.from_text(_fqdn(match.group("name")))
++        if name != root_name:
++            continue
++        rdataset = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.DNSKEY)
++        rdata = dns.rdata.from_text(
++            dns.rdataclass.IN,
++            dns.rdatatype.DNSKEY,
++            " ".join(
++                [
++                    match.group("flags"),
++                    match.group("protocol"),
++                    match.group("algorithm"),
++                    match.group("key"),
++                ]
++            ),
++            origin=root_name,
++        )
++        rdataset.add(rdata)
++        return rdataset
++
++    raise DNSSECValidationError(f"No DNSKEY trust anchor found for {root_name}")
++
++
++def _validated_dnskeys(server, root, trust_anchor_file, timeout):
++    root_name = dns.name.from_text(_fqdn(root))
++    trust_anchor = _parse_trust_anchor(trust_anchor_file, root)
++    response = _query(server, root, dns.rdatatype.DNSKEY, timeout)
++    dnskey_rrset = _find_rrset(response.answer, root, dns.rdatatype.DNSKEY)
++    dnskey_rrsig = _find_rrset(
++        response.answer,
++        root,
++        dns.rdatatype.RRSIG,
++        covers=dns.rdatatype.DNSKEY,
++    )
++    if dnskey_rrset is None or dnskey_rrsig is None:
++        raise DNSSECValidationError(f"Missing DNSKEY/RRSIG answer for {root_name}")
++
++    dns.dnssec.validate(dnskey_rrset, dnskey_rrsig, {root_name: trust_anchor})
++    return dnskey_rrset
++
++
++def resolve_txt(
++    server,
++    name,
++    trust_anchor_file,
++    root,
++    timeout=2,
++):
++    """Resolve TXT records and validate the positive answer with DNSSEC."""
++    dnskeys = _validated_dnskeys(server, root, trust_anchor_file, timeout)
++    response = _query(server, name, dns.rdatatype.TXT, timeout)
++    txt_rrset = _find_rrset(response.answer, name, dns.rdatatype.TXT)
++    txt_rrsig = _find_rrset(
++        response.answer,
++        name,
++        dns.rdatatype.RRSIG,
++        covers=dns.rdatatype.TXT,
++    )
++
++    if txt_rrset is None:
++        raise DNSSECValidationError(f"No DNSSEC-validated TXT answer for {name}")
++    if txt_rrsig is None:
++        raise DNSSECValidationError(f"Missing TXT RRSIG for {name}")
++
++    root_name = dns.name.from_text(_fqdn(root))
++    dns.dnssec.validate(txt_rrset, txt_rrsig, {root_name: dnskeys})
++
++    records = []
++    for rdata in txt_rrset:
++        records.append(b"".join(rdata.strings).decode())
++    return records
+diff --git a/knot_dns_store.py b/knot_dns_store.py
+index d8f84e2..86426ba 100644
+--- a/knot_dns_store.py
++++ b/knot_dns_store.py
+@@ -4,6 +4,7 @@ import shlex
+ import subprocess
+ 
+ import identity
++import dnssec_resolver
+ import metrics
+ from store_interface import TrustfulStore
+ 
+@@ -38,12 +39,20 @@ class KnotDNSStore(TrustfulStore):
+         tsig_key_name,
+         tsig_secret,
+         ttl=60,
++        dnssec_validate=True,
++        dnssec_trust_anchor="trust-anchors/example.com.key",
++        dnssec_root=None,
++        dns_timeout=2,
+     ):
+         self.server = server
+         self.zone = _fqdn(zone)
+         self.tsig_key_name = tsig_key_name.rstrip(".")
+         self.tsig_secret = tsig_secret
+         self.ttl = ttl
++        self.dnssec_validate = dnssec_validate
++        self.dnssec_trust_anchor = dnssec_trust_anchor
++        self.dnssec_root = _fqdn(dnssec_root or zone)
++        self.dns_timeout = dns_timeout
+ 
+     def _sid_labels(self, identifier):
+         # SHA-256 SID values are 64 chars, exceeding DNS's 63-octet label limit.
+@@ -56,6 +65,20 @@ class KnotDNSStore(TrustfulStore):
+         return _fqdn(f"{self._sid_labels(identifier)}.{namespace}.{self.zone}")
+ 
+     def _run_dig_txt(self, name):
++        if self.dnssec_validate:
++            return metrics.timed(
++                "DNSSEC TXT resolve",
++                "knot_dns",
++                "dnssec_txt_resolve",
++                lambda: dnssec_resolver.resolve_txt(
++                    self.server,
++                    name,
++                    self.dnssec_trust_anchor,
++                    self.dnssec_root,
++                    timeout=self.dns_timeout,
++                ),
++            )
++
+         result = metrics.timed(
+             "DNS TXT resolve",
+             "knot_dns",
+diff --git a/plot_performance.py b/plot_performance.py
+index 64ccf76..2cb3cda 100644
+--- a/plot_performance.py
++++ b/plot_performance.py
+@@ -281,6 +281,7 @@ def plot_protocol_phase_breakdown(df, backend_order, output_dir):
+ def plot_backend_operation_log_scale(df, output_dir):
+     operations = [
+         ("KNOT_DNS", "knot_dns", "dns_txt_update", "Knot DNS: TXT update"),
++        ("KNOT_DNS", "knot_dns", "dnssec_txt_resolve", "Knot DNS: DNSSEC TXT resolve"),
+         ("KNOT_DNS", "knot_dns", "dns_txt_resolve", "Knot DNS: TXT resolve"),
+         ("IPFS", "ipfs", "ipfs_add_json", "IPFS: add JSON"),
+         ("IPFS", "ipfs", "ipns_publish", "IPFS: IPNS publish"),
+@@ -288,6 +289,7 @@ def plot_backend_operation_log_scale(df, output_dir):
+         ("IPFS", "ipfs", "ipfs_cat_json", "IPFS: cat JSON"),
+         ("DNSLINK_IPFS", "dnslink_ipfs", "ipfs_add_json", "DNSLink/IPFS: add JSON"),
+         ("DNSLINK_IPFS", "dnslink_ipfs", "dns_txt_update", "DNSLink/IPFS: TXT update"),
++        ("DNSLINK_IPFS", "dnslink_ipfs", "dnssec_txt_resolve", "DNSLink/IPFS: DNSSEC TXT resolve"),
+         ("DNSLINK_IPFS", "dnslink_ipfs", "dns_txt_resolve", "DNSLink/IPFS: TXT resolve"),
+         ("DNSLINK_IPFS", "dnslink_ipfs", "ipfs_cat_json", "DNSLink/IPFS: cat JSON"),
+     ]
+diff --git a/trust-anchors/example.com.key b/trust-anchors/example.com.key
+new file mode 100644
+index 0000000..f289014
+--- /dev/null
++++ b/trust-anchors/example.com.key
+@@ -0,0 +1,3 @@
++trusted-keys {
++  example.com. 257 3 13 "SP9tgN4hgt/VfpOfKfquGUIYtX5zguIJLI/S/AT4IDvrOpZsME4Sd21hyI220n/X+23qSxXGJZe3XkbOBeqlrw==";
++};
+-- 
+2.39.3 (Apple Git-146)
+

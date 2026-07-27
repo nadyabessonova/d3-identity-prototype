@@ -1,0 +1,229 @@
+{
+  "name": "Travel assistant",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        -464
+      ],
+      "id": "445b8a15-96f0-4f30-9788-4d6a2118d6fa",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/invoke",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"action\": \"search_flights\",\n  \"payload\": {\n    \"origin\": \"HEL\",\n    \"destination\": \"CDG\",\n    \"date\": \"2026-09-15\",\n    \"airlines\": [\n      \"Lufthansa\",\n      \"Air France\"\n    ],\n    \"max_price\": 300\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -624,
+        -464
+      ],
+      "id": "d920ebf2-1fb1-4385-b454-c81e4be6d89a",
+      "name": "Search Flights"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/invoke",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"authorize_payment\",\n  \"payload\": {\n    \"merchant\": \"{{$node['Search Flights'].json.service_response.airline}}\",\n    \"airline\": \"{{$node['Search Flights'].json.service_response.airline}}\",\n    \"flight\": \"{{$node['Search Flights'].json.service_response.flight}}\",\n    \"amount\": \"{{$node[\"Search Flights\"].json.service_response.price}}\",\n    \"currency\": \"EUR\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -224,
+        -544
+      ],
+      "id": "610a210e-9cee-4152-aabd-33ae87c23aef",
+      "name": "Authorise Payment"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/invoke",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"authorize_payment\",\n  \"payload\": {\n    \"merchant\": \"{{$node['Search Flights'].json.service_response.airline}}\",\n    \"airline\": \"{{$node['Search Flights'].json.service_response.airline}}\",\n    \"flight\": \"{{$node['Search Flights'].json.service_response.flight}}\",\n    \"amount\": \"{{$node['Search Flights'].json.service_response.price}}\",\n    \"currency\": \"EUR\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -32,
+        -544
+      ],
+      "id": "c96f878e-0f41-4d54-942f-2819066b9449",
+      "name": "Purchase Ticket"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/invoke",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"action\":\"send_notification\",\n  \"payload\":{\n      \"recipient\":\"nadya@example.com\",\n      \"message\":\"Your ticket has been booked.\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        176,
+        -544
+      ],
+      "id": "184e7ed1-73fd-47ef-9279-c5e596ca7153",
+      "name": "Send Notification"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "948a688d-1d42-4a5e-9998-4520cc41647b",
+              "leftValue": "={{$json.service_response.flight}}",
+              "rightValue": {},
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -464,
+        -464
+      ],
+      "id": "f067386c-e90a-492c-8acb-3fc63558a526",
+      "name": "If flight is found"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b0aab986-6eed-415f-813e-3b71e6154f66",
+              "name": "status",
+              "value": "No flight found",
+              "type": "string"
+            },
+            {
+              "id": "96c6b4e1-16df-470d-beae-182ce5dd73c0",
+              "name": "purchase",
+              "value": "cancelled",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -224,
+        -304
+      ],
+      "id": "4e792fa6-614c-4393-a4a5-75a17c38bb97",
+      "name": "No flight message"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Search Flights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Flights": {
+      "main": [
+        [
+          {
+            "node": "If flight is found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorise Payment": {
+      "main": [
+        [
+          {
+            "node": "Purchase Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Purchase Ticket": {
+      "main": [
+        [
+          {
+            "node": "Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If flight is found": {
+      "main": [
+        [
+          {
+            "node": "Authorise Payment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No flight message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "cd490c0f-1aff-454e-8fa0-f2d50a424409",
+  "meta": {
+    "instanceId": "de3530b67264985e4dbb57534870286ad0b0535cdad471dea4cecbf656402a43"
+  },
+  "nodeGroups": [],
+  "id": "GKsi1Vof3RaNPv1b",
+  "tags": []
+}

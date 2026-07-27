@@ -1,0 +1,62 @@
+\begin{table}[htb]
+\centering
+\caption{Execution time per protocol phase for the Knot DNS backend, in seconds}
+\label{tab:phase-latency-knot_dns}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Protocol phase} & \textbf{Mean} & \textbf{Std} & \textbf{Median} & \textbf{[Min, Max]} \\
+\midrule
+Identity generation (startup)      & 0.00320 & 0.00154 & 0.00287 & [0.00271, 0.01127] \\
+Identity \& metadata publication   & 2.33085 & 0.45553 & 2.23824 & [1.14725, 3.06509] \\
+Broker discovery                   & 0.02560 & 0.00792 & 0.02388 & [0.01305, 0.04802] \\
+DAP capability creation            & 0.00242 & 0.00142 & 0.00218 & [0.00090, 0.00684] \\
+IDAP authorization                 & 0.09260 & 0.02155 & 0.09458 & [0.05076, 0.13494] \\
+Tampering detection check          & 0.04439 & 0.01114 & 0.04525 & [0.02610, 0.06231] \\
+A2A session crypto                 & 0.00005 & 0.00002 & 0.00005 & [0.00002, 0.00014] \\
+\midrule
+\textbf{End-to-end flow} & \textbf{2.50501} & \textbf{0.44962} & \textbf{2.42113} & \textbf{[1.33440, 3.24744]} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htb]
+\centering
+\caption{Execution time per protocol phase for the DNSLink/IPFS backend, in seconds}
+\label{tab:phase-latency-dnslink_ipfs}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Protocol phase} & \textbf{Mean} & \textbf{Std} & \textbf{Median} & \textbf{[Min, Max]} \\
+\midrule
+Identity generation (startup)      & 0.00298 & 0.00015 & 0.00298 & [0.00271, 0.00334] \\
+Identity \& metadata publication   & 1.79763 & 0.46496 & 1.68060 & [0.97836, 2.85673] \\
+Broker discovery                   & 0.02622 & 0.00439 & 0.02618 & [0.01788, 0.04059] \\
+DAP capability creation            & 0.00165 & 0.00038 & 0.00161 & [0.00092, 0.00229] \\
+IDAP authorization                 & 0.10838 & 0.01802 & 0.10760 & [0.07983, 0.15768] \\
+Tampering detection check          & 0.04590 & 0.00918 & 0.04539 & [0.02044, 0.06860] \\
+A2A session crypto                 & 0.00004 & 0.00001 & 0.00004 & [0.00003, 0.00006] \\
+\midrule
+\textbf{End-to-end flow} & \textbf{1.98660} & \textbf{0.46889} & \textbf{1.85662} & \textbf{[1.14881, 3.10605]} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htb]
+\centering
+\caption{Execution time per protocol phase for the IPFS/IPNS backend, in seconds}
+\label{tab:phase-latency-ipfs}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Protocol phase} & \textbf{Mean} & \textbf{Std} & \textbf{Median} & \textbf{[Min, Max]} \\
+\midrule
+Identity generation (startup)      & 0.00672 & 0.00203 & 0.00629 & [0.00351, 0.01528] \\
+Identity \& metadata publication   & 157.41048 & 42.63014 & 152.53360 & [60.55074, 252.89539] \\
+Broker discovery                   & 0.03110 & 0.00685 & 0.03117 & [0.02066, 0.04579] \\
+DAP capability creation            & 0.01225 & 0.00341 & 0.01184 & [0.00236, 0.01905] \\
+IDAP authorization                 & 0.03107 & 0.01073 & 0.02830 & [0.01998, 0.06853] \\
+Tampering detection check          & 0.01036 & 0.00331 & 0.00933 & [0.00724, 0.02355] \\
+A2A session crypto                 & 0.00005 & 0.00004 & 0.00003 & [0.00002, 0.00027] \\
+\midrule
+\textbf{End-to-end flow} & \textbf{157.51030} & \textbf{42.63571} & \textbf{152.63297} & \textbf{[60.62689, 253.00248]} \\
+\bottomrule
+\end{tabular}
+\end{table}

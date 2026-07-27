@@ -1,0 +1,4 @@
+operation,count,mean_sec,median_sec,std_sec,min_sec,max_sec
+dns_txt_resolve,480,0.018628,0.016274,0.010458,0.006344,0.154202
+dns_txt_update,280,0.110933,0.026828,0.233519,0.010981,1.066006
+dnssec_txt_resolve,45,0.009076,0.008489,0.003267,0.005985,0.020713

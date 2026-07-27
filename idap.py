@@ -76,6 +76,71 @@ def _sequence_matches(cap, request):
     return expected is None or request.get("sequence") == expected
 
 
+def _field_value(data, path):
+    current = data
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None, False
+        current = current[part]
+    return current, True
+
+
+def _compare_constraint(actual, exists, operator, expected):
+    if operator == "exists":
+        return exists is bool(expected)
+
+    if not exists:
+        return False
+
+    if operator == "eq":
+        return actual == expected
+    if operator == "neq":
+        return actual != expected
+    if operator == "in":
+        return isinstance(expected, list) and actual in expected
+    if operator == "not_in":
+        return isinstance(expected, list) and actual not in expected
+
+    if operator in {"lte", "lt", "gte", "gt"}:
+        try:
+            actual_number = float(actual)
+            expected_number = float(expected)
+        except (TypeError, ValueError):
+            return False
+        if operator == "lte":
+            return actual_number <= expected_number
+        if operator == "lt":
+            return actual_number < expected_number
+        if operator == "gte":
+            return actual_number >= expected_number
+        return actual_number > expected_number
+
+    return False
+
+
+def _constraints_match(cap, request):
+    constraints = cap.get("authority", {}).get("constraints", {})
+    if not constraints:
+        return True
+    if not isinstance(constraints, dict):
+        return False
+
+    payload = request.get("payload", {})
+    if not isinstance(payload, dict):
+        return False
+
+    for field_path, rule in constraints.items():
+        if not isinstance(rule, dict):
+            rule = {"eq": rule}
+
+        actual, exists = _field_value(payload, field_path)
+        for operator, expected in rule.items():
+            if not _compare_constraint(actual, exists, operator, expected):
+                return False
+
+    return True
+
+
 def _mark_presentation_used(cap, request):
     cap_id = _capability_id(cap)
     _SEEN_PRESENTATIONS.add(_presentation_id(cap, request))
@@ -174,6 +239,9 @@ def authenticate_and_authorize(request, service_private_key=None, store=None):
         return {"status": "REJECTED"}
 
     if not _sequence_matches(cap, request):
+        return {"status": "REJECTED"}
+
+    if not _constraints_match(cap, request):
         return {"status": "REJECTED"}
 
     if _expiry_passed(cap.get("control", {}).get("expiry", "")):

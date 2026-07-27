@@ -6,3 +6,9 @@ __pycache__/
 .matplotlib-cache/
 ipfs_store_registry.json
 performance_results_dnssec.csv
+
+# Local/private materials
+D3-v1.pdf
+no touch backup/
+__pycache__/
+.DS_Store

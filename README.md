@@ -43,7 +43,7 @@ Run `demo.py` for the end-to-end flow. It performs following steps:
 ## File Map
 
 `identity.py`
-Creates Ed25519 signing identities, derives SIDs from public keys, signs and verifies messages, and exposes an additional X25519 encryption public key used for `EncCAP`.
+Creates Ed25519 signing identities, derives compact D3 identifiers as `base32(ripemd160(sha256(P)))`, signs and verifies messages, and exposes an additional X25519 encryption public key used for `EncCAP`. In `STORE_TYPE=IPFS`, this identifier is treated as the D3 IID.
 
 `store_interface.py`
 Defines the abstract `TrustfulStore` interface: publish identity, resolve public key, and resolve metadata.
@@ -61,7 +61,7 @@ Real Knot DNS-backed implementation of the Trustful Mutable Store. It publishes 
 Shared DNSSEC-validating TXT resolver for the real DNS-backed stores. It validates the zone DNSKEY RRset against the configured trust anchor, then validates TXT RRsets before returning them to the protocol code.
 
 `ipfs_store.py`
-Real IPFS/IPNS-backed implementation of the Trustful Mutable Store. It stores immutable identity and metadata JSON objects in IPFS and uses IPNS as the mutable pointer layer. Because D3 SIDs and IPNS names are separate namespaces, the prototype keeps a local `ipfs_store_registry.json` mapping from SID store keys to IPNS names. In `STORE_TYPE=IPFS`, the current identity layer uses its existing IPFS-compatible SID derivation. 
+Real IPFS/IPNS-backed implementation of the Trustful Mutable Store. It stores immutable identity and metadata JSON objects in IPFS and uses IPNS as the mutable pointer layer. The D3 IID is the protocol identity, Kubo/IPNS names are mutable-store locators. The local `ipfs_store_registry.json` bootstrap registry maps `D3 IID -> IPNS key/name -> IPFS CID`. IPFS identity and metadata objects are owner-signed; service metadata can also be provider-signed as a trust endorsement.
 
 `dnslink_ipfs_store.py`
 DNSLink/IPFS implementation of the Trustful Mutable Store. It stores immutable identity and metadata JSON objects in IPFS, then publishes DNSLink TXT records in Knot DNS that point to those IPFS CIDs. DNSLink reads are DNSSEC-validated. This avoids IPNS publication but still uses IPFS for immutable content storage.
@@ -83,6 +83,9 @@ Runs one full flow through the abstract store layer.
 
 `dnssec_attack_demo.py`
 Runs a focused DNS-layer security experiment. It publishes an identity, confirms normal DNSSEC-validated TXT resolution succeeds, then simulates a forged TXT response by modifying the returned RRset while keeping the original RRSIG. The resolver rejects the response before any public key is returned to IDAP.
+
+`artifacts/`
+Contains generated experiment outputs, plots, thesis tables, and archived stale files. It is separated from the source code so the current prototype remains easy to inspect.
 
 ## Capability spec
 
@@ -150,11 +153,7 @@ DNS_TIMEOUT=2
 
 These can be overridden with environment variables, including `KNOT_DNS_TSIG_SECRET`.
 
-For the real DNS modes, TSIG is used only to authenticate dynamic DNS writes. Runtime DNS reads are validated with DNSSEC before the returned TXT values are accepted by the prototype. For temporary debugging only, DNSSEC read validation can be disabled with:
-
-```bash
-DNSSEC_VALIDATE=false STORE_TYPE=KNOT_DNS python3 demo.py
-```
+For the real DNS modes, TSIG is used only to authenticate dynamic DNS writes. Runtime DNS reads are validated with DNSSEC before the returned TXT values are accepted by the prototype. 
 
 To run the same flow against a local IPFS/Kubo daemon:
 
@@ -207,7 +206,7 @@ The DNSLink/IPFS backend uses the existing `KNOT_DNS_*` and `IPFS_*` environment
 dnslink=/ipfs/<cid>
 ```
 
-The mutable layer is DNS/Knot, while immutable JSON content is stored in IPFS.
+The mutable layer is Knot DNS, immutable JSON content is stored in IPFS.
 The DNSLink TXT lookup is DNSSEC-validated before the IPFS CID is dereferenced.
 
 ## DNSSEC Attack Experiment
@@ -230,6 +229,185 @@ IDAP reached: False
 ```
 
 The attack script simulates a forged DNS TXT answer by changing the TXT payload after it has been received from Knot DNS while leaving the original DNSSEC signature unchanged. Validation fails in `dnssec_resolver.py`, before `idap.py` can receive or trust a public key.
+
+## HTTP Gateway For n8n
+
+`d3_gateway.py` exposes the existing D3 flow through a lightweight FastAPI entry point. It does not call `demo.main()` and does not reimplement DAP, IDAP, or broker discovery. It orchestrates the existing modules as reusable libraries.
+
+The gateway is the single public entry point for orchestration tools such as n8n:
+
+```text
+n8n -> POST /invoke -> D3 Gateway -> Broker -> DAP -> IDAP -> Protected Service
+```
+
+The protected services are registered locally, but they are still published into the configured Trustful Store and discovered through `broker.discover()` before DAP/IDAP execution:
+
+| Action | Input type | Output type | Service |
+| --- | --- | --- | --- |
+| `search_flights` | `flight_search_request` | `flight_offer` | Flight Search Agent |
+| `authorize_payment` | `payment_request` | `payment_authorization` | Payment Authorization Agent |
+| `purchase_ticket` | `ticket_purchase_request` | `ticket_confirmation` | Ticket Purchase Agent |
+| `send_notification` | `notification_request` | `notification_status` | Notification Agent |
+
+The gateway publishes multiple providers, each with its own identity and service registry:
+
+| Provider | Services |
+| --- | --- |
+| `TravelProvider` | `search_flights`, `purchase_ticket` |
+| `PaymentProvider` | `authorize_payment` |
+| `NotificationProvider` | `send_notification` |
+
+The travel services live in `services/` and expose `execute(payload)`. The gateway dispatches through `services/registry.py`, not through independent REST services. Provider layout is declared in `services/providers.py`.
+
+Install gateway dependencies:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+Run the gateway:
+
+```bash
+uvicorn d3_gateway:app --reload
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+The client does not need to know which provider implements the action. If `input_type` and `output_type` are omitted, the gateway infers them from the service registry before calling Broker discovery.
+
+Invoke the Travel Assistant flight search:
+
+```bash
+curl -X POST http://127.0.0.1:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "search_flights",
+    "payload": {
+      "origin": "HEL",
+      "destination": "CDG",
+      "date": "2026-09-15",
+      "airlines": ["Lufthansa", "Air France"],
+      "max_price": 300
+    }
+  }'
+```
+
+Invoke the protected payment authorization:
+
+```bash
+curl -X POST http://127.0.0.1:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "authorize_payment",
+    "payload": {
+      "merchant": "Air France",
+      "airline": "Air France",
+      "flight": "AF1177",
+      "amount": 240,
+      "currency": "EUR"
+    }
+  }'
+```
+
+The successful gateway response contains this protected service result under `service_response`:
+
+```json
+{
+  "authorized": true,
+  "authorization_id": "AUTH-123456",
+  "purchase_authorization": {
+    "type": "D3-EncCAP",
+    "target_action": "purchase_ticket",
+    "constraints": {
+      "authorization_id": { "eq": "AUTH-123456" },
+      "flight": { "eq": "AF1177" },
+      "airline": { "eq": "Air France" },
+      "amount": { "lte": 240 },
+      "currency": { "eq": "EUR" }
+    }
+  }
+}
+```
+
+`purchase_authorization.enc_cap` is a delegated DAP capability encrypted to the Ticket Purchase Agent. n8n should pass this object to the next `purchase_ticket` invocation.
+
+Invoke ticket purchase with the delegated authorization:
+
+```bash
+curl -X POST http://127.0.0.1:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "purchase_ticket",
+    "payload": {
+      "flight": "AF1177",
+      "airline": "Air France",
+      "amount": 240,
+      "currency": "EUR",
+      "authorization_id": "AUTH-123456",
+      "purchase_authorization": {
+        "...": "use the purchase_authorization object returned by authorize_payment"
+      }
+    }
+  }'
+```
+
+For `purchase_ticket`, the gateway does not mint a fresh capability. It presents the delegated EncCAP returned by `authorize_payment`; IDAP decrypts it, verifies the DAP signatures, checks expiry/replay/quota, and evaluates the signed constraints against the ticket purchase payload before the Ticket Purchase Agent executes.
+
+Demonstrate generic IDAP constraint rejection after successful discovery:
+
+```bash
+curl -i -X POST http://127.0.0.1:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "authorize_payment",
+    "payload": {
+      "merchant": "Air France",
+      "amount": 550,
+      "currency": "EUR"
+    }
+  }'
+```
+
+Expected result:
+
+```text
+HTTP/1.1 403 Forbidden
+```
+
+In this case Broker discovery succeeds for `authorize_payment`, DAP creates and signs a capability, and IDAP rejects the request because the signed generic constraint `amount <= 300` is not satisfied.
+
+Ticket purchase also rejects if the delegated authorization is missing or if the purchase request changes the authorized flight, airline, amount, currency, or authorization ID. This demonstrates end-to-end delegated authorization across cooperating providers without adding a separate payment-token mechanism.
+
+### Generic Capability Constraints
+
+`dap.py` supports optional generic constraints inside the signed `authority` object:
+
+```json
+{
+  "authority": {
+    "action": "authorize_payment",
+    "constraints": {
+      "merchant": { "in": ["Lufthansa", "Air France"] },
+      "amount": { "lte": 300 },
+      "currency": { "eq": "EUR" }
+    }
+  }
+}
+```
+
+`idap.py` evaluates those constraints against `request.payload` before the protected service is executed. Supported operators are `eq`, `neq`, `in`, `not_in`, `lte`, `lt`, `gte`, `gt`, and `exists`. The constraint mechanism is deliberately scenario-independent: the payment example uses it for merchant and amount limits, but the same format can constrain other payload fields in other applications.
+
+When n8n runs in Docker, use the host gateway URL from the n8n HTTP Request node:
+
+```text
+http://host.docker.internal:8000/invoke
+```
+
+The gateway initializes the configured Trustful Store, publishes the demonstration identities and metadata, discovers a service through `broker.discover()`, creates and encrypts a DAP capability, performs IDAP authorization, verifies the transcript, derives the session key, and sends the service payload over the existing encrypted A2A channel. n8n only sees a normal HTTP request and JSON response.
 
 ## Expected Output
 
@@ -254,7 +432,7 @@ REJECTED
 Each `demo.py` execution appends timing rows to:
 
 ```text
-performance_results.csv
+artifacts/performance/raw/performance_results.csv
 ```
 
 The CSV contains:
@@ -266,29 +444,58 @@ run_id,timestamp,backend,scenario,operation,duration_ms,status
 To generate summary statistics:
 
 ```bash
-python3 analyse_performance.py
+python3 analysis/analyse_performance.py
 ```
 
-The analysis output is split by backend, for example `=== METRICS (sec): KNOT_DNS ===`, `=== METRICS (sec): IPFS ===`, and `=== METRICS (sec): DNSLINK_IPFS ===`, plus backend-internal sections such as `=== KNOT DNS STATS (sec) ===`, `=== IPFS STATS (sec) ===`, and `=== DNSLINK IPFS STATS (sec) ===`.
+The analysis output is split by backend, for example `=== METRICS (sec): KNOT_DNS ===`, `=== METRICS (sec): IPFS ===`, and `=== METRICS (sec): DNSLINK_IPFS ===`, plus backend-internal sections such as `=== KNOT DNS STATS (sec) ===`, `=== IPFS STATS (sec) ===`, and `=== DNSLINK IPFS STATS (sec) ===`. The default CSV outputs are written to:
+
+```text
+artifacts/performance/statistics/
+```
 
 To generate performance diagrams for all real backends:
 
 ```bash
-python3 plot_performance.py
+python3 analysis/plot_performance.py
 ```
 
 This writes PNG files to:
 
 ```text
-performance_plots/
+artifacts/performance/plots/performance_plots/
 ```
 
-To generate readable comparison diagrams only for `KNOT_DNS` and `DNSLINK_IPFS`, excluding the much slower pure IPNS/IPFS results:
+To generate readable comparison diagrams only for `KNOT_DNS` and `DNSLINK_IPFS`, excluding IPNS/IPFS results:
 
 ```bash
-python3 plot_performance.py \
+python3 analysis/plot_performance.py \
   --backends KNOT_DNS,DNSLINK_IPFS \
-  --output-dir performance_plots_dnslink_comparison
+  --output-dir artifacts/performance/plots/performance_plots_dnslink_comparison
+```
+
+To generate thesis-ready LaTeX phase tables:
+
+```bash
+python3 analysis/generate_thesis_phase_tables.py
+```
+
+This writes:
+
+```text
+artifacts/thesis/thesis_phase_tables_d3_conformant.tex
+```
+
+## Artifact Layout
+
+Generated outputs are organized as follows:
+
+```text
+artifacts/performance/raw/          raw timing CSV files
+artifacts/performance/statistics/   aggregated performance statistics
+artifacts/performance/plots/        generated performance diagrams
+artifacts/security/                 DNSSEC attack / security experiment results
+artifacts/thesis/                   LaTeX-ready thesis tables
+artifacts/archive/stale-root/       old scratch files retained for provenance
 ```
 
 ## Dependencies
@@ -308,14 +515,15 @@ python3 -m pip install cryptography dnspython
 - `STORE_TYPE=IPFS` uses real IPFS immutable storage plus IPNS mutable pointers as the Trustful Mutable Store.
 - `STORE_TYPE=DNSLINK_IPFS` uses Knot DNS as the mutable DNSLink pointer layer and IPFS as immutable JSON storage.
 - `STORE_TYPE=KNOT_DNS` and `STORE_TYPE=DNSLINK_IPFS` use TSIG for authenticated DNS writes and DNSSEC validation for authenticated DNS reads.
-- The IPFS backend uses `ipfs_store_registry.json` as a PoC bootstrap registry because D3/IPFS SIDs and IPNS names are different namespaces.
+- DNS-backed modes now use the D3 compact SID construction `base32(ripemd160(sha256(P)))`, which fits in a single DNS label.
+- The IPFS backend uses D3-style IIDs as protocol identities and `ipfs_store_registry.json` as a PoC bootstrap registry mapping IIDs to IPNS locators.
 - The IPFS backend keeps the D3 protocol flow, but the SID-to-IPNS registry is a prototype bootstrap, not a fully decentralized discovery mechanism.
+- Pure IPFS identity and metadata documents include owner signatures, and service metadata may include provider endorsement signatures. These signatures establish metadata trust binding and are separate from DAP runtime capabilities.
 - Replay and quota state are held in process memory in `idap.py`.
 - `EncCAP` uses an X25519/AES-GCM envelope.
 - DAP is implemented at the capability-artifact level: the prototype creates the signed Cap/EncCAP that DAP is expected to produce, but it does not model a separate multi-message DAP negotiation exchange between providers. IDAP then validates that capability before A2A communication.
 
 ## TODO / Future Work
 
-- Add signed metadata endorsements for the IPFS/IPNS trust-binding model described in the paper. The current IPFS backend demonstrates self-certifying identifiers and IPNS-based metadata resolution, but it does not yet add provider or broker signatures directly to the metadata object.
-- A minimal extension would store metadata objects containing owner and provider endorsements, for example `owner_signature` and `provider_signature`, so a relying party can verify not only that the IID controls a public key, but also that a trusted Agent Provider or Broker endorses the agent metadata.
+- Optionally add broker endorsement signatures to the IPFS/IPNS trust-binding model. The current IPFS backend stores and verifies owner signatures and provider endorsement signatures, but not broker signatures.
 - This is different from DNSSEC-based trust binding. DNSSEC binds an IID/public key to an organization-controlled domain, while signed metadata endorsements preserve the DNS-independent IPFS/IPNS model and express trust through cryptographic attestations attached to IPFS metadata.

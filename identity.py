@@ -2,8 +2,8 @@
 Identity layer for DAP / IDAP.
 
 - Always generates Ed25519 identities
-- In DNS mode: SID = sha256(pubkey)
-- In IPFS mode: SID = PeerID derived from pubkey (NOT node PeerID)
+- In DNS mode: SID = base32(ripemd160(sha256(pubkey)))
+- In IPFS mode: IID = base32(ripemd160(sha256(pubkey)))
 - Always supports signing
 """
 
@@ -26,20 +26,32 @@ KEYS = {}
 
 BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
-def derive_sid(public_key):
-    """
-    Derive DNS-mode SID as SHA256(public_key_bytes) hex.
-    Accepts raw bytes, base64 string, or Ed25519PublicKey.
-    """
+
+def _public_key_bytes(public_key):
     if isinstance(public_key, Ed25519PublicKey):
-        public_key = public_key.public_bytes(
+        return public_key.public_bytes(
             encoding=Encoding.Raw,
             format=PublicFormat.Raw,
         )
-    elif isinstance(public_key, str):
-        public_key = base64.b64decode(public_key)
+    if isinstance(public_key, str):
+        return base64.b64decode(public_key)
+    return public_key
 
-    return hashlib.sha256(public_key).hexdigest()
+
+def derive_sid(public_key):
+    """
+    Derive a D3 DNS-mode SID as base32(ripemd160(sha256(public_key_bytes))).
+    Accepts raw bytes, base64 string, or Ed25519PublicKey.
+    """
+    public_key = _public_key_bytes(public_key)
+    sha256_digest = hashlib.sha256(public_key).digest()
+    ripemd160_digest = hashlib.new("ripemd160", sha256_digest).digest()
+    return base64.b32encode(ripemd160_digest).decode().rstrip("=").lower()
+
+
+def derive_iid(public_key):
+    """Derive a D3 IPFS-mode IID using the same compact CI construction."""
+    return derive_sid(public_key)
 
 # ------------------------------------------------------------
 # PeerID derivation (IPFS-compatible identity multihash)
@@ -107,9 +119,9 @@ def generate_identity(name, mode=None):
     )
 
     if mode == "IPFS":
-        sid = derive_peer_id(public_bytes)
+        sid = derive_iid(public_bytes)
     else:
-        sid = hashlib.sha256(public_bytes).hexdigest()
+        sid = derive_sid(public_bytes)
 
     ident = {
         "name": name,

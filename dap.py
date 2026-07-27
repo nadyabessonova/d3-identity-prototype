@@ -46,18 +46,23 @@ def create_capability(
     nonce,
     cp_private_key,
     sp_private_key,
+    constraints=None,
 ):
     """Create a DAP capability signed by cp and sp.
 
     DAP does not resolve SIDs or enforce policy; it only shapes and signs
     the artifact.
     """
+    authority = {"action": action}
+    if constraints:
+        authority["constraints"] = constraints
+
     cap = {
         "sp": sp,
         "cp": cp,
         "c1": c1,
         "s1": s1,
-        "authority": {"action": action},
+        "authority": authority,
         "control": {
             "expiry": expiry,
             "quota": quota,

@@ -22,8 +22,8 @@ def _fqdn(name):
     return name if name.endswith(".") else f"{name}."
 
 
-def _query(server, name, rdtype, timeout):
-    query = dns.message.make_query(name, rdtype, want_dnssec=True)
+def _query(server, name, rdtype, timeout, want_dnssec=True):
+    query = dns.message.make_query(name, rdtype, want_dnssec=want_dnssec)
     try:
         response = dns.query.udp(query, server, timeout=timeout)
         if response.flags & dns.flags.TC:
@@ -132,6 +132,25 @@ def resolve_txt(
 
     root_name = dns.name.from_text(_fqdn(root))
     dns.dnssec.validate(txt_rrset, txt_rrsig, {root_name: dnskeys})
+
+    records = []
+    for rdata in txt_rrset:
+        records.append(b"".join(rdata.strings).decode())
+    return records
+
+
+def resolve_txt_unvalidated(server, name, timeout=2):
+    """Resolve TXT records without DNSSEC validation using the same DNS client."""
+    response = _query(
+        server,
+        name,
+        dns.rdatatype.TXT,
+        timeout,
+        want_dnssec=False,
+    )
+    txt_rrset = _find_rrset(response.answer, name, dns.rdatatype.TXT)
+    if txt_rrset is None:
+        return []
 
     records = []
     for rdata in txt_rrset:

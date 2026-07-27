@@ -1,6 +1,5 @@
 """Knot DNS-backed TrustfulStore using TXT records and TSIG updates."""
 
-import shlex
 import subprocess
 
 import identity
@@ -55,7 +54,9 @@ class KnotDNSStore(TrustfulStore):
         self.dns_timeout = dns_timeout
 
     def _sid_labels(self, identifier):
-        # SHA-256 SID values are 64 chars, exceeding DNS's 63-octet label limit.
+        # D3 SIDs fit in one DNS label; chunk only as a defensive fallback.
+        if len(identifier) <= 63:
+            return identifier
         return ".".join(
             identifier[index:index + 32]
             for index in range(0, len(identifier), 32)
@@ -79,31 +80,16 @@ class KnotDNSStore(TrustfulStore):
                 ),
             )
 
-        result = metrics.timed(
+        return metrics.timed(
             "DNS TXT resolve",
             "knot_dns",
             "dns_txt_resolve",
-            lambda: subprocess.run(
-                [
-                    "dig",
-                    f"@{self.server}",
-                    name,
-                    "TXT",
-                    "+short",
-                    "+time=2",
-                    "+tries=1",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
+            lambda: dnssec_resolver.resolve_txt_unvalidated(
+                self.server,
+                name,
+                timeout=self.dns_timeout,
             ),
         )
-        records = []
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line:
-                records.append("".join(shlex.split(line)))
-        return records
 
     def _run_nsupdate_txt(self, name, value):
         update = (

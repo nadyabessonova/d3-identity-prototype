@@ -6,7 +6,6 @@ documents. This avoids IPNS publication while preserving the store interface.
 
 import base64
 import json
-import shlex
 import subprocess
 import uuid
 from urllib import error, parse, request
@@ -58,7 +57,9 @@ class DNSLinkIPFSStore(TrustfulStore):
         self.published_identities = set()
 
     def _labels(self, identifier):
-        # Keep labels comfortably below DNS's 63-octet label limit.
+        # D3 SIDs fit in one DNS label; chunk only as a defensive fallback.
+        if len(identifier) <= 63:
+            return identifier
         return ".".join(
             identifier[index:index + 32]
             for index in range(0, len(identifier), 32)
@@ -173,31 +174,16 @@ class DNSLinkIPFSStore(TrustfulStore):
                 ),
             )
 
-        result = metrics.timed(
+        return metrics.timed(
             "DNSLink TXT resolve",
             "dnslink_ipfs",
             "dns_txt_resolve",
-            lambda: subprocess.run(
-                [
-                    "dig",
-                    f"@{self.server}",
-                    name,
-                    "TXT",
-                    "+short",
-                    "+time=2",
-                    "+tries=1",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
+            lambda: dnssec_resolver.resolve_txt_unvalidated(
+                self.server,
+                name,
+                timeout=self.dns_timeout,
             ),
         )
-        records = []
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line:
-                records.append("".join(shlex.split(line)))
-        return records
 
     def _publish_document(self, identifier, namespace, document):
         cid = self._add_json(document)
